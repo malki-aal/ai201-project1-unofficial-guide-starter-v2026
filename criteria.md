@@ -25,7 +25,7 @@ contains the answer.
 **Why this target:**
 <!-- e.g. "One of my questions is about a topic only two documents mention, so
      I expect that one to be hard." -->
-
+ My questions target a question that can be only found in one document so thats why its 4 out of 5.
 ---
 
 ## 2. Every answer names a source
@@ -35,7 +35,7 @@ Every answer the system produces names at least one source document.
 **Why this target:**
 <!-- Why all five and not four? What about your setup makes that achievable —
      or what would have to go wrong for it not to be? -->
-
+The setup of the question makes it able to have a credible source for each answer so it prevents hallucination.
 ---
 
 ## 3. The relevance gate stops out-of-corpus questions
@@ -52,11 +52,12 @@ in at least 4 of 5 tries.
 **Why this target:**
 <!-- What did your distances look like when you set the cutoff in Milestone 4?
      Was there a clean gap, or did the two groups overlap? -->
-
+This target was put so that it prevents confidently wrong answers form being displayed.
 ---
 
 ## 4. Something about your chunks
 
+After each test case list the chunk size
 <!-- YOU WRITE THIS ONE.
 
      How would you know if your chunks were the right size? Name something
@@ -72,13 +73,13 @@ in at least 4 of 5 tries.
 
 
 **Why this target:**
-
+This target is to see each question and its chunk size so that we can see the scope of whic the ansewr comes from.
 
 
 ---
 
 ## 5. Your choice
-
+Check after each failed trail in all 5 the type of question the corpus handles badly
 <!-- YOU WRITE THIS ONE TOO.
 
      Pick something you actually care about getting right. It could be about
@@ -91,7 +92,7 @@ in at least 4 of 5 tries.
 
 **Why this target:**
 
-
+To adjust the set up of the question and to adjust the model for those types of questions.
 
 ---
 
