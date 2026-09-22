@@ -1,6 +1,6 @@
 # The Unofficial Guide
 
-<!-- Replace this line with your name and which corpus you picked. -->
+Malakai — corpus: `campus_life`
 
 > **This file is your submission.** Fill it in as you go — most sections get
 > written during the milestone that produces them, not at the end.
@@ -21,37 +21,37 @@
 
 ## What This Does
 
-<!-- Three or four sentences. Which corpus you picked, and the kinds of
-     questions your system answers. Write it for someone who has never seen
-     this repo.
-
-     Milestone 5. -->
+This is a retrieval-augmented question-answering system built on `campus_life`,
+a corpus of 88 short posts about student life at a university — dining halls,
+dorms, course workloads, and the administrative rules nobody explains
+properly. It answers specific questions like "how many mid-terms does MATH 220
+have?" or "does the housing lottery ever sell out east lots?" by retrieving the
+most relevant post, checking that it's actually close enough to be trustworthy,
+and having a model write an answer grounded in that post — naming the source
+file it came from. Questions clearly outside the corpus get refused instead of
+answered with a guess.
 
 ## Chunking Strategy
 
-**Chunk size:**
-**Overlap:**
+**Chunk size:** 350 characters
+**Overlap:** 0 characters
 
-<!-- What about YOUR documents made you pick these numbers? Short posts and
-     long sectioned guides don't want the same chunking, and "800 seemed
-     reasonable" earns nothing. Point at something you noticed when you read
-     the documents in Milestone 1.
-
-     If you changed your mind partway through, say so and say why. That's worth
-     more than pretending you got it right first time.
-
-     Milestone 3. -->
+`campus_life`'s posts average about 317 characters — close enough to one
+paragraph that a fixed 800-character window (the starter default) would have
+swallowed several unrelated posts into a single chunk if documents were ever
+concatenated, and more importantly gave no signal about where one post's
+single thought actually ends. Reading the documents in Milestone 1, almost
+every post is one self-contained answer to one implied question, so the goal
+became keeping each post whole rather than cutting it by length at all.
+350 was chosen so the large majority of posts fit as a single chunk unsplit;
+the few that run longer (course workload posts with a paragraph plus a
+follow-up detail, mostly) get split on paragraph breaks instead of mid-sentence,
+so a boundary always falls between thoughts. Overlap is 0 because there's
+nothing to preserve across a boundary when the split already lands between
+paragraphs — overlap only matters when you're forced to cut mid-thought, and
+this strategy is built to avoid that.
 
 ## Sample Chunks
-
-<!-- Five chunks, pasted as text. Label each one and name the file it came from
-     AND the function that produced it — the grader checks your code against
-     what you claim here.
-
-     `python app.py chunks -n 5` prints all three for you. Copy them straight
-     across.
-
-     Milestone 3. -->
 
 **Chunk 1** — source: `admin_add_drop_deadline.txt#0` — produced by: `chunker.py::split_documents`
 
@@ -104,45 +104,59 @@ Best time to do laundry here is Tuesday or Wednesday morning. Sunday after 6pm y
 
 ## Sample Answer
 
-<!-- One complete question and answer, pasted as text, with the source line
-     visible. Milestone 4. -->
-
-**Question:**
+**Question:** How many credit hours are required to graduate?
 
 **Answer:**
 
 ```
+To graduate, 120 credit hours are required.
+
+Source: admin_graduation_requirements.txt
+
+Sources retrieved: admin_graduation_requirements.txt, admin_pass_fail_option.txt, course_stat_150.txt, course_stat_150_workload.txt, money_jobs.txt
 ```
 
-**My relevance cutoff:**
+**My relevance cutoff:** 0.6 (the starter default)
 
-<!-- The number you set in config.py, and how you got there.
-
-     You ran five questions your corpus covers and the five in OUT_OF_SCOPE
-     that it clearly doesn't, and wrote down the best distance for each. What
-     did those two groups look like? Where was the gap? Put the actual numbers
-     here — the table below wants all ten rows.
-
-     Milestone 4. -->
+Ran my five test questions and the five `OUT_OF_SCOPE` ones through
+`app.py retrieve` and recorded the best distance for each. The two groups
+didn't overlap at all: every in-corpus question's best match landed between
+0.256 and 0.416, and every out-of-corpus question's best match landed between
+0.823 and 0.934 — a gap from roughly 0.42 to 0.82 with nothing in it. 0.6 sits
+in the middle of that gap, so it isn't a close call either way; I'd have
+needed to move it by more than 0.2 in either direction before it started
+misclassifying anything.
 
 | Question | In corpus? | Best distance |
 |---|---|---|
-|  |  |  |
+| How many credit hours are required to graduate? | yes | 0.289 |
+| What is the last semester to declare a major | yes | 0.355 |
+| How many mid-terms are there in math220 Linear Algebra? | yes | 0.404 |
+| Do students receive free campus wifi? | yes | 0.416 |
+| Does east parking lots ever sell out? | yes | 0.256 |
+| What is the capital of Mongolia? | no | 0.825 |
+| How do I change the oil in a diesel engine? | no | 0.934 |
+| Who won the 1994 World Cup? | no | 0.823 |
+| What is the recommended dosage of ibuprofen for a headache? | no | 0.837 |
+| How do I write a for loop in Rust? | no | 0.891 |
 
 ## How I Used AI
 
-<!-- Two specific moments. For each: what you asked for, what came back, and
-     what you changed about it.
+**1.** I asked Claude to write `split_documents` given full context on the
+project (the corpus, `config.py`, `ingest.py`). My own in-progress draft
+packed words one at a time into a running buffer and merged trailing leftovers
+back into the previous chunk by mutating `chunks[-1].text` directly, plus it
+had a leftover `print(chunks)` debug line still in the loop. Claude rewrote
+it to first check whether a whole document already fits under `CHUNK_SIZE`
+(most `campus_life` posts do) and only fall back to paragraph-boundary
+splitting for the longer ones, and removed the debug print and the mutation.
 
-     "I asked Claude to write the chunking function from my notes. It ignored
-     the overlap, so I added that myself" is the level of detail we're after.
-     "I used AI to help me code" is not.
-
-     Milestone 5. -->
-
-**1.**
-
-**2.**
+**2.** When I asked Claude to commit `chunker.py` and this README, it caught
+that the sample chunk text I'd pasted into the README had gotten corrupted —
+the em dashes had come out as literal replacement characters when copied from
+a PowerShell terminal that wasn't rendering UTF-8. It regenerated the sample
+text directly from Python (writing straight to a file instead of through the
+terminal) to get the real characters back before committing.
 
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
