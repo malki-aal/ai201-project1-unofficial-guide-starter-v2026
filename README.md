@@ -53,29 +53,53 @@
 
      Milestone 3. -->
 
-**Chunk 1** — source: `` — produced by: ``
+**Chunk 1** — source: `admin_add_drop_deadline.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
-```
+On the add/drop deadline
 
-**Chunk 2** — source: `` — produced by: ``
-
-```
-```
-
-**Chunk 3** — source: `` — produced by: ``
+You can add a course through the end of the second week. Dropping is a longer window — through the end of week six — but a drop after week two shows as a W on your transcript. Nothing anywhere on the registrar's site says this plainly, and students find out from each other.
 
 ```
-```
 
-**Chunk 4** — source: `` — produced by: ``
-
-```
-```
-
-**Chunk 5** — source: `` — produced by: ``
+**Chunk 2** — source: `course_cs_210.txt#0` — produced by: `chunker.py::split_documents`
 
 ```
+CS 210 Data Structures
+
+I'm a junior and I've done this twice now. Format is lecture with weekly labs; slides go up after class, not before. Assessment: two midterms and a final, all drawn from lecture material rather than the textbook. Midterms are curved, the final is not.
+
+Expect 8 to 10 hours a week outside class.
+```
+
+**Chunk 3** — source: `course_math_220_workload.txt#0` — produced by: `chunker.py::split_documents`
+
+```
+Workload for MATH 220 Linear Algebra
+
+People keep asking so: 6 to 8 hours a week, almost all of it on problem sets. That's real time, not optimistic time.
+
+It's front-loaded — the first month is heavier than the rest, partly because you're learning the format.
+```
+
+**Chunk 4** — source: `dining_the_ridgeway_cafe.txt#0` — produced by: `chunker.py::split_documents`
+
+```
+The Ridgeway Café
+
+Second-year here. Wait times: 10 to 15 minutes at 12:30, none after 2:00. The thing worth going for is the only place on campus with real espresso. The thing to know is that seating is tight; about 40 seats for a building of 900.
+
+Hours are 7:00am to 4:00pm weekdays only. Costs declining balance only, no meal swipes.
+```
+
+**Chunk 5** — source: `housing_innisfree_hall_laundry.txt#0` — produced by: `chunker.py::split_documents`
+
+```
+Laundry in Innisfree Hall
+
+Machines take $1.75 wash, $1.75 dry, app-based. There are eight washers and six dryers for the building, which is the wrong ratio and means the dryers back up on Sunday evenings.
+
+Best time to do laundry here is Tuesday or Wednesday morning. Sunday after 6pm you will wait.
 ```
 
 ## Sample Answer

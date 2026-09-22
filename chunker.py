@@ -22,6 +22,7 @@ to it, write down what you saw, and move on. That's a real observation about
 your pipeline, not giving up.
 """
 
+import re
 from dataclasses import dataclass
 
 import config
@@ -82,22 +83,73 @@ def fallback_split(
 
 def split_documents(documents: list[Document]) -> list[Chunk]:
     """
-    Split documents into chunks. ⚠️ REPLACE THE BODY OF THIS IN MILESTONE 3.
+    Paragraph-aware chunking.
 
-    Right now it just calls the fallback. That is the plain, generic behaviour
-    the brief is talking about.
-
-    When you write your own strategy, set `produced_by` to
-    "chunker.py::split_documents" so your README's Sample Chunks section names
-    the right function. `app.py chunks` prints that string for you.
-
-    Things worth thinking about before you write any code:
-      - Are your documents short posts or long guides?
-      - Is the useful information in one sentence, or spread over a paragraph?
-      - Would splitting on paragraph breaks keep more thoughts intact than
-        splitting on a character count?
+    campus_life's posts average ~317 characters, so with CHUNK_SIZE=350 most
+    of them fit whole — a post is one thought, and splitting it would only
+    separate a sentence from the context it needs. The rare longer post is
+    split on paragraph breaks, since that's where one thought ends and the
+    next begins, instead of at a fixed character count that might land
+    mid-sentence. A single paragraph that's still too long on its own falls
+    back to fixed-size windows so nothing gets silently dropped.
     """
-    return fallback_split(documents)
+    chunk_size = config.CHUNK_SIZE
+    overlap = config.CHUNK_OVERLAP
+    chunks: list[Chunk] = []
+
+    for doc in documents:
+        text = doc.text.strip()
+        if not text:
+            continue
+
+        if len(text) <= chunk_size:
+            chunks.append(
+                Chunk(
+                    text=text,
+                    source=doc.source,
+                    index=0,
+                    produced_by="chunker.py::split_documents",
+                )
+            )
+            continue
+
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n+", text) if p.strip()]
+        pieces: list[str] = []
+        current = ""
+
+        for paragraph in paragraphs:
+            candidate = f"{current}\n\n{paragraph}" if current else paragraph
+            if len(candidate) <= chunk_size:
+                current = candidate
+                continue
+
+            if current:
+                pieces.append(current)
+                current = ""
+
+            if len(paragraph) <= chunk_size:
+                current = paragraph
+            else:
+                step = max(chunk_size - overlap, 1)
+                for start in range(0, len(paragraph), step):
+                    piece = paragraph[start : start + chunk_size].strip()
+                    if piece:
+                        pieces.append(piece)
+
+        if current:
+            pieces.append(current)
+
+        for index, piece in enumerate(pieces):
+            chunks.append(
+                Chunk(
+                    text=piece,
+                    source=doc.source,
+                    index=index,
+                    produced_by="chunker.py::split_documents",
+                )
+            )
+
+    return chunks
 
 
 def describe(chunks: list[Chunk]) -> str:
