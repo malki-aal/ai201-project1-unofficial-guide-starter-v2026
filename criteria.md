@@ -35,7 +35,7 @@ Every answer the system produces names at least one source document.
 **Why this target:**
 <!-- Why all five and not four? What about your setup makes that achievable —
      or what would have to go wrong for it not to be? -->
-The setup of the question makes it able to have a credible source for each answer so it prevents hallucination.
+The setup of the question makes it attributable to at least 1 document and is acheivable because of the document retrieval funciton that displays the source
 ---
 
 ## 3. The relevance gate stops out-of-corpus questions
@@ -52,12 +52,12 @@ in at least 4 of 5 tries.
 **Why this target:**
 <!-- What did your distances look like when you set the cutoff in Milestone 4?
      Was there a clean gap, or did the two groups overlap? -->
-This target was put so that it prevents confidently wrong answers form being displayed.
+This target was put because the distances were close to each other so there was a clean gap that made it more readable
 ---
 
 ## 4. Something about your chunks
 
-After each test case list the chunk size
+After sampling 3 out of the 5, chunk overlap should be close to 0 because of the short paragraphs
 <!-- YOU WRITE THIS ONE.
 
      How would you know if your chunks were the right size? Name something
@@ -79,7 +79,7 @@ This target is to see each question and its chunk size so that we can see the sc
 ---
 
 ## 5. Your choice
-Check after each failed trail in all 5 the type of question the corpus handles badly
+Check after each trail in all 5 the type of question the corpus handles badly for at least 4 of the 5 trails
 <!-- YOU WRITE THIS ONE TOO.
 
      Pick something you actually care about getting right. It could be about
