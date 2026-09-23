@@ -185,15 +185,42 @@ terminal) to get the real characters back before committing.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 4/5 | 4/5 | 4/5 | MET |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET |
+| 4. Chunk overlap close to 0 (3 of 5 questions' source chunks sampled) | ~0 characters shared between neighboring chunks | 0 chars | 0 chars | 0 chars | MET |
+| 5. Corpus mishandles "yes/no" questions that require inferring past what the source states | Same failure shows up on 4+ of 5 questions with this shape (of the 3 runs available) | mishandled | mishandled | mishandled | MET* |
+
+*Run count note: `run_eval.py` defaults to 3 runs, matching criteria 1–3 above, not the 5 I wrote criterion 5's target against. Reported as 3/3 available trials rather than out of 5.
+
+Row 1 is scored, not read by hand: `scorer.py::judge` checks that every keyword in `expects` (from `questions.py`) shows up in the answer. Produced by `run_eval.py::main` and `run_eval.py::check_out_of_scope` (`results/run_2026-09-23_1841_before.md`; an earlier unscored run from before `scorer.py` existed is `results/run_2026-09-23_1738.md`), except criterion 4, which isn't something that script measures — I got it by calling `chunker.py::split_documents` directly and reading `config.py`'s `CHUNK_OVERLAP = 0`.
 
 <!-- Underneath, paste the REAL output for each criterion from one of your
      runs — the actual text your system produced, not a description of it.
      Name the file and function that produced it. -->
+
+**1. Retrieved chunk contains the answer** (`scorer.py::judge`, `run_eval.py::main`, `store.py::search`) — 4/5, same every run because retrieval is deterministic (same query, same index) and the answers came out identical in substance each time. The one miss is the wifi question:
+
+> Q: "Do students receive free campus wifi?"
+> Chunk (`admin_wifi_and_accounts.txt`): "Your student account gives you campus wifi, printing, and a cloud drive with unlimited storage..."
+> Answer: "Yes, your student account gives you campus wifi."
+
+The chunk never says "free" — the model infers it because wifi is bundled with the account. The other four chunks state their answers outright: `admin_graduation_requirements.txt` says "120 credit hours," `course_math_220_exams.txt` says "Two midterms," `admin_declaring_a_major.txt` says "at the end of your second semester," `admin_parking_permits.txt` says "The east lot never sells out."
+
+**2. Every answer names a source** (`generate.py::answer_from_chunks`) — 5/5 every run. Example from run 1: "To graduate, 120 credit hours are required (admin_graduation_requirements.txt)."
+
+**3. Gate stops out-of-corpus questions** (`run_eval.py::check_out_of_scope`, `gate.py::check`) — 5/5, refused all five (target was 4/5): "What is the capital of Mongolia?" → best distance 0.825, refused. Same for the other four.
+
+**4. Chunk overlap close to 0** (`chunker.py::split_documents`) — I sampled the source chunks for 3 of the 5 questions: `admin_graduation_requirements.txt`, `admin_wifi_and_accounts.txt`, and `course_math_220.txt`. The first two are short enough to stay a single whole chunk each (no neighbor to overlap with). `course_math_220.txt` split into two:
+
+```
+chunk 0 (269 chars): "...Expect 6 to 8 hours a week, almost all of it on problem sets."
+chunk 1 (112 chars): "The one piece of advice: the problem sets are the course..."
+```
+
+No characters repeat between them — consistent with `config.py`'s `CHUNK_OVERLAP = 0`.
+
+**5. Corpus mishandles "yes/no" questions that require inferring past what the source states** — the wifi question is the clearest case: the source never says "free," but the answer said "Yes" with no hedge, in all 3 runs. The declaring-a-major question showed a milder version of the same thing — the source only implies there's no hard deadline ("no penalty for declaring late"), and the model's confidence in stating that varied: runs 1–2 answered directly, but run 3 added "The documents do not specify a final deadline or last semester to declare a major," which is a more honest read of the same chunk. So the corpus doesn't reliably flag when a question asks for something one inferential step beyond what's written.
 
 ## Verdicts
 
