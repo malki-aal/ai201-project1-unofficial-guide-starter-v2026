@@ -261,6 +261,65 @@ No characters repeat between them — consistent with `config.py`'s `CHUNK_OVERL
 
      Milestone 3. -->
 
+Only one criterion missed: **#5**. Criteria 1–4 all cleared their targets, so
+there's only one diagnosis to do, not a pipeline post-mortem across the board.
+
+### #5 — not a pipeline failure, a criterion-writing failure
+
+I'm not going to force this into "loading / chunking / embedding / retrieval /
+generation" and pretend that's where it broke, because it didn't break there —
+it broke before any of those stages ran a single query. The target said "4 of
+the 5 trails," but `run_eval.py` runs 3 trials by default, so there was never
+a 5th trial to be 4 of. And "the type of question the corpus handles badly"
+was never named in advance — nothing in `questions.py` or `criteria.md` fixed
+a category before I saw results, so any category I named after the fact would
+be reverse-engineered from the answer I already had, not a prediction I was
+testing. That's a measurement problem, not a system problem, which is why I
+revised it in `criteria.md` instead of just re-running it.
+
+### The mechanism underneath it, since it's real
+
+The revision names a real, checkable behavior, so it's worth tracing where it
+actually lives, even though it isn't what made criterion 5 a miss.
+
+- **Loading / chunking:** ruled out. `admin_wifi_and_accounts.txt` is 283
+  characters — under `CHUNK_SIZE=350` — so it became one whole chunk. Nothing
+  was cut or separated.
+- **Embedding / retrieval:** ruled out. The wifi question's best distance was
+  0.416, well under the 0.6 gate, and `admin_wifi_and_accounts.txt` was in the
+  top-5 every run. Retrieval found the right chunk every time.
+- **Generation:** this is where it happens. `generate.py::GROUNDING_INSTRUCTION`
+  tells the model "Use only the information in the documents... Do not guess,"
+  but the chunk only says the account "gives you campus wifi" — it never says
+  the word "free," and never states a price at all. The model answered "Yes"
+  anyway, treating "included with the account" as equivalent to "free." The
+  instruction bans guessing but never defines the line between *paraphrasing
+  what's written* and *asserting something plausible that isn't written* —
+  so the model gets to decide that line itself, and it decided generously.
+
+### Pattern, not two separate problems
+
+This is the same failure showing up twice, not two different ones. It's the
+one question behind criterion 1's single miss (4/5, wifi) *and* the one behind
+criterion 5's revision — same chunk, same generation call, same mechanism.
+One root cause: the generation stage will affirm a reasonable-sounding
+inference without flagging that it went past what the source states.
+
+### Were my targets set low?
+
+Partly. Criterion 3 cleared its target by a wide margin — 5/5 against a 4/5
+bar, and the out-of-scope distances (0.823–0.934) sit far above the 0.6
+cutoff, so there was never a close call to lose. That's a target I'd tighten:
+instead of "4 of 5 refused," I'd measure the *margin* — e.g. "every refused
+question's best distance is at least 0.1 above the cutoff" — since right now
+the criterion can't tell a comfortable refusal from a borderline one.
+Criterion 2 is similarly soft: `GROUNDING_INSTRUCTION` explicitly tells the
+model to name its source on every answer, so "does it name a source" mostly
+tests whether the model follows an instruction, not whether the source it
+names is the *right* one. I'd tighten that to "the named source is the
+document that actually contains the answer," which is a real correctness
+check instead of a formatting one.
+
 ## The Improvement
 
 **What I changed:**
