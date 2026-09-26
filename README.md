@@ -235,11 +235,11 @@ No characters repeat between them — consistent with `config.py`'s `CHUNK_OVERL
 
 | # | Criterion | Verdict | How I decided |
 |---|---|---|---|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
+| 1 | Retrieved chunks contain the answer — 4 of 5 | MET | `scorer.py::judge` scored 4/5 in all three runs, same miss every time: the wifi question's chunk says the account "gives you campus wifi" but never says "free," so the retrieved text doesn't actually contain what the question asked for. |
+| 2 | Every answer names a source — 5 of 5 | MET | I read all 15 answers (5 questions × 3 runs) in `results/run_2026-09-23_1841_before.md` by hand; every one names a source file, no exceptions, no close calls. |
+| 3 | Gate stops out-of-corpus questions — 4 of 5 | MET | `run_eval.py::check_out_of_scope` refused 5 of 5 `OUT_OF_SCOPE` questions — clears the 4-of-5 bar with room to spare, and it's one deterministic pass so there's nothing to average across runs. |
+| 4 | Chunk overlap close to 0 (3 of 5 sampled) | MET | Sampled the chunks behind 3 of my 5 questions directly from `chunker.py::split_documents`; two never split, and the one that did (`course_math_220.txt`) shares 0 characters between its two pieces — matches `config.CHUNK_OVERLAP = 0` exactly, not just "close." |
+| 5 | Same question type mishandled in ≥4 of 5 trials | MISSED — criterion is broken as written | `run_eval.py` produces 3 runs by default, not 5, so "4 of 5 trials" has no 5th trial to be 4 of. I also never named "the type of question" in advance, so any category I pick now (e.g. "questions needing an inference the source never states") is reverse-engineered from results I'd already seen, not a prediction I'm checking. See the revision in `criteria.md`. |
 
 ## Diagnoses
 

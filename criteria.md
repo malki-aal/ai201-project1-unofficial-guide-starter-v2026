@@ -94,6 +94,20 @@ Check after each trail in all 5 the type of question the corpus handles badly fo
 
 To adjust the set up of the question and to adjust the model for those types of questions.
 
+> **Revised in unit 2:** Across the 3 runs `run_eval.py` actually produces, the
+> question whose answer requires an inference the source text never states
+> (the wifi question — "free" is never written down, only that the account
+> "gives you campus wifi") is answered without flagging that inference in all
+> 3 runs.
+>
+> **Why revised:** The original said "4 of the 5 trails," but my eval script
+> runs 3 trials by default, not 5, so there's no fifth trial for that fraction
+> to describe. It also didn't name which "type of question" I meant in
+> advance — I would have had to look at results first and then pick a
+> category to fit them, which isn't a prediction I could fail. The revised
+> version names the specific question ahead of any new run and checks
+> something the run log already records.
+
 ---
 
 <!-- ─────────────────────────────────────────────────────────────────────────
