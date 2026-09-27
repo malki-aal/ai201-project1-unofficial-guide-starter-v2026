@@ -158,6 +158,30 @@ a PowerShell terminal that wasn't rendering UTF-8. It regenerated the sample
 text directly from Python (writing straight to a file instead of through the
 terminal) to get the real characters back before committing.
 
+**3.** In unit 2, I'd only sketched `scorer.py` — a `normalize()` that just
+returned `None`, no `judge()` — so my own first read of criterion 1 (4/5, wifi
+failing) was a manual judgment call with nothing to check it against. I asked
+Claude to actually implement `judge()` and re-run the eval; the automated
+score came out 4/5 with the same wifi miss, which is the only reason I trust
+that number now instead of just my own read of the text.
+
+**4.** For Milestone 3's diagnosis, I asked Claude to look across the three
+"before" runs and work out whether criterion 1's wifi miss and criterion 5's
+vague target were two problems or one. It traced both to the same mechanism
+in `generate.py::GROUNDING_INSTRUCTION` — the model treating "included with
+your account" as equivalent to "free" — instead of me writing two separate
+patches for what turned out to be one root cause. That's the specific
+pattern-spotting this unit asked for, and it's also why the fix I tried
+targeted the prompt rather than retrieval or chunking.
+
+**5.** After the fix didn't move any numbers, I asked Claude to diff the
+before/after answers line by line rather than just re-reading the pass/fail
+table. That's how we caught that the wifi answer came back byte-for-byte
+identical, and that the one thing that did change (a hedge on the
+declaring-a-major question) had just moved from run 3 to run 1 rather than
+actually resolving anything — a distinction the criteria table alone doesn't
+show.
+
 <!-- ── Stretch features ─────────────────────────────────────────────────────
      Doing one? Say so here BEFORE you start. A feature this README never
      claims earns nothing.
@@ -400,9 +424,68 @@ fact.
 
      Milestone 5. -->
 
+**The wifi/"free" question itself is still broken.** Criterion 1 still sits
+at exactly 4/5 because of it, and criterion 5's revision exists specifically
+to keep tracking it: it's mishandled in all 3 after-runs, identically to the
+3 before-runs. The one change I tried — tightening the grounding prompt — did
+not touch this. What I'd try next, in order:
+
+1. **A verification pass after generation, not another prompt tweak.** The
+   diagnosis showed the model is filling the gap with outside knowledge
+   ("account wifi is usually free") rather than something in the retrieved
+   text, and a second sentence in the same prompt wasn't enough to override
+   that. A cheap, checkable next step: after generation, check whether the
+   specific fact-word the question is asking about (here, "free" or a price)
+   actually appears in the retrieved chunk text, and if it doesn't, force a
+   rewrite or append a caveat rather than trusting the model to self-police.
+   That's a different pipeline stage than the one I already changed, so it's
+   a genuinely separate experiment, not a variation on this one.
+2. **Rewrite the source document itself** to state cost explicitly ("wifi is
+   included at no extra cost") — the cheapest possible fix, but it only works
+   because I happen to control this corpus, and it wouldn't teach the system
+   anything about handling the next document like it.
+
+I stopped after one change because that's what this milestone asked for — one
+change, measured properly — not because there's nothing left to try. Trying a
+second fix on top of the first, in the same run, would have made it
+impossible to tell which change did what, which is the exact mistake the
+milestone is built to prevent.
+
+**Criterion 5 as revised is really a diagnostic, not a target with a pass
+condition tied to improvement.** It confirms the weakness recurs, but it
+doesn't currently reward fixing it — "mishandled in all 3 runs" and "fixed in
+all 3 runs" would both just be different observations, not a met/missed bar.
+I'd want a real next-unit version of it with an actual improvement target,
+e.g. "0 of 3 runs mishandle the wifi question" — which, honestly, the system
+fails right now (3 of 3).
+
 ## What I'd Do Differently
 
 <!-- Knowing what you know now — which of your five criteria would you write
      differently, and why?
 
      Milestone 5. -->
+
+**Criterion 5**, clearly — already revised once this unit, and I'd go further
+next time. I'd name the specific question or question-shape in advance
+("questions where the source implies an answer but never states it outright")
+rather than discovering the category by reading results, and I'd write the
+target against the 3 runs `run_eval.py` actually produces instead of a nicer-
+sounding "5 trials" I never checked against the tooling.
+
+**Criterion 2**, next. "Names a source" turned out to test compliance with an
+instruction (`GROUNDING_INSTRUCTION` already tells the model to cite one every
+time) rather than anything about the system's actual behavior — it was never
+at risk of failing. I'd write it as "the named source is the document that
+actually contains the answer," which is a claim that could be false and would
+have caught the wifi case too (it names the right file; it just overclaims
+what that file says).
+
+**Criterion 1**, more subtly. "The retrieved chunks include one that contains
+the answer" sounds precise but I was the one interpreting "contains" for four
+of five questions, and it took the wifi case actually failing to notice that
+"contains" and "supports a reasonable inference of" are different claims. I'd
+write it next time as "the exact fact the question asks about appears as
+text in the chunk, not just something a reasonable person could conclude from
+it" — spelling out the distinction before a real answer forces me to invent
+it under pressure.
