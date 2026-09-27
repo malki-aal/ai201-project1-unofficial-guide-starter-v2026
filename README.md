@@ -322,12 +322,22 @@ check instead of a formatting one.
 
 ## The Improvement
 
-**What I changed:**
+**What I changed:** One rule added to `generate.py::GROUNDING_INSTRUCTION`:
 
-**Why I picked it:**
+```
+- If the question asks for a specific detail (a price, a deadline, a count, a yes/no) and the documents
+  imply it but never state it outright, say plainly that it isn't stated rather than asserting it as fact.
+```
 
-<!-- Connect it to a specific diagnosis above in one sentence. If you can't,
-     you picked a fix because it sounded impressive. -->
+Nothing else changed — same chunks, same index, same top-k, same threshold. The
+diff is one sentence in the system prompt.
+
+**Why I picked it:** The diagnosis traced criterion 1's one miss and criterion
+5's revision to the same mechanism, and it lives in generation, not retrieval:
+`GROUNDING_INSTRUCTION` already banned "guessing" but never defined the line
+between paraphrasing what a chunk says and asserting something the chunk only
+implies. This targets that exact line — the same gap the diagnosis named,
+not a new problem I noticed along the way.
 
 ### Run Log — After
 
@@ -336,20 +346,49 @@ check instead of a formatting one.
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Retrieved chunk contains the answer | 4 of 5 |  |  |  |  |
-| 2. Every answer names a source | 5 of 5 |  |  |  |  |
-| 3. Gate stops out-of-corpus questions | 4 of 5 |  |  |  |  |
-| 4. | | | | | |
-| 5. | | | | | |
+| 1. Retrieved chunk contains the answer | 4 of 5 | 4/5 | 4/5 | 4/5 | MET (unchanged) |
+| 2. Every answer names a source | 5 of 5 | 5/5 | 5/5 | 5/5 | MET (unchanged) |
+| 3. Gate stops out-of-corpus questions | 4 of 5 | 5/5 | 5/5 | 5/5 | MET (unchanged) |
+| 4. Chunk overlap close to 0 (3 of 5 sampled) | ~0 characters shared | 0 chars | 0 chars | 0 chars | MET (unchanged — this fix never touched chunking) |
+| 5. Revised: wifi question answered without flagging the inference | mishandled in all 3 runs | mishandled | mishandled | mishandled | Confirmed, unchanged |
 
-**Did it help?**
+Produced by `run_eval.py::main` and `run_eval.py::check_out_of_scope`,
+`results/run_2026-09-26_2245_after.md`, compared against the before run at
+`results/run_2026-09-23_1841_before.md`.
 
-<!-- Say plainly whether it did, and how you know. If it made things worse,
-     say that — a change that backfired, honestly reported, earns full credit
-     and is more interesting than one that worked. What matters is that you can
-     tell.
+**Before vs. after, the one question that mattered:**
 
-     Milestone 4. -->
+```
+Before — "Do students receive free campus wifi?" (all 3 runs identical):
+  Yes, your student account gives you campus wifi.
+  Source: admin_wifi_and_accounts.txt
+
+After  — same question (all 3 runs identical):
+  Yes, your student account gives you campus wifi. This is stated in `admin_wifi_and_accounts.txt`.
+```
+
+**Did it help?** No. Be plain about it: the exact answer the diagnosis was
+about — the wifi question — came back unchanged in all 3 after-runs. It still
+says "Yes" with no hedge on "free," still fails `scorer.py::judge` the same
+way, and every one of the five criteria landed on the identical numbers as
+the before run. Nothing moved.
+
+The one thing that did shift is smaller than it looks: on the
+declaring-a-major question, the hedged phrasing ("The documents do not state
+a final semester...") now shows up in run 1 instead of run 3. That's not
+progress — it's still 1 of 3 runs hedging, same inconsistency as before, just
+relocated.
+
+My best read of why: the model isn't treating "your account gives you wifi"
+and "wifi is free" as two separate claims it needs separate evidence for —
+it's filling the gap with background knowledge (campus wifi bundled with an
+account is usually free) that the prompt's "don't use anything you know from
+elsewhere" rule was already supposed to block. One more sentence competing
+against that prior wasn't enough to override it. A next attempt would need to
+either name the specific fact-type more concretely (e.g. call out cost/price
+words specifically) or address this before generation — at retrieval or
+gating — rather than asking the model to catch its own inference after the
+fact.
 
 ## What's Still Broken
 
