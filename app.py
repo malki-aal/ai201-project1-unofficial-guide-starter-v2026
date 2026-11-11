@@ -183,6 +183,7 @@ def ask_pipeline(
     threshold=None,
     on_gate=None,
     on_prompt=None,
+    entrypoint="cli",
 ):
     """Retrieve, gate, answer. Returns the outcome and prints nothing.
 
@@ -199,16 +200,65 @@ def ask_pipeline(
     prompt just before it goes out — that's how `--show-prompt` shows you the
     prompt while the model is still thinking rather than after.
     """
+    import runlog
+    import generate as gen
+
+    # Capstone instrumentation: one log record per run, written in `finally`
+    # so a crash leaves a record too.
+    record = runlog.new_record(question, entrypoint)
+    record["corpus"] = corpus or config.CORPUS
+    calls_before = gen.call_count()
+    tokens_before = gen.token_counts()
+    hits_before = gen._cache_hits
+    start = time.perf_counter()
+    try:
+        outcome = _ask_pipeline_inner(
+            question, corpus, variant, top_k, threshold, on_gate, on_prompt, record
+        )
+        record["status"] = (
+            "refused" if outcome["refused"]
+            else "failed" if outcome.get("failed")
+            else "ok"
+        )
+        record["answer"] = outcome["answer"]
+        record["failure_kind"] = outcome.get("failure_kind")
+        record["failure_detail"] = outcome.get("failure_detail")
+        record["sources"] = outcome["sources"]
+        record["best_distance"] = round(outcome["best_distance"], 4)
+        record["threshold"] = outcome["threshold"]
+        return outcome
+    except BaseException as exc:
+        record["status"] = "error"
+        record["failure_kind"] = "crash"
+        record["failure_detail"] = f"{type(exc).__name__}: {exc}"
+        raise
+    finally:
+        tokens_after = gen.token_counts()
+        record["model_calls"] = gen.call_count() - calls_before
+        record["cache_hit"] = gen._cache_hits > hits_before
+        record["tokens_in"] = tokens_after["prompt"] - tokens_before["prompt"]
+        record["tokens_out"] = tokens_after["output"] - tokens_before["output"]
+        record["duration_s"] = round(time.perf_counter() - start, 3)
+        runlog.write(record)
+
+
+def _ask_pipeline_inner(
+    question, corpus, variant, top_k, threshold, on_gate, on_prompt, record
+):
     from store import search
     import gate
+    import runlog
     from generate import GenerationError, answer_from_chunks, build_prompt
 
-    results = search(
-        question,
-        top_k=top_k or config.TOP_K,
-        corpus=corpus or config.CORPUS,
-        variant=variant,
-    )
+    with runlog.Timer() as t_retrieve:
+        results = search(
+            question,
+            top_k=top_k or config.TOP_K,
+            corpus=corpus or config.CORPUS,
+            variant=variant,
+        )
+    record["retrieval_s"] = t_retrieve.seconds
+    record["chunks_retrieved"] = len(results)
     decision = gate.check(results, threshold=threshold)
     if on_gate is not None:
         on_gate(decision)
@@ -238,6 +288,7 @@ def ask_pipeline(
 
     # Capstone hardening: a failed Gemini call is an outcome, not a crash.
     # The user gets a specific fallback message; the caller gets the kind.
+    gen_start = time.perf_counter()
     try:
         outcome["answer"] = answer_from_chunks(question, results)
     except GenerationError as exc:
@@ -245,6 +296,8 @@ def ask_pipeline(
         outcome["failed"] = True
         outcome["failure_kind"] = exc.kind
         outcome["failure_detail"] = exc.detail
+    finally:
+        record["generation_s"] = round(time.perf_counter() - gen_start, 3)
     return outcome
 
 
