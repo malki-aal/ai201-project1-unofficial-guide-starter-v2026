@@ -4,6 +4,68 @@ Everything about how the starter works and how to use it.
 
 ---
 
+## Capstone: run it locally, with logs (Path B)
+
+This system runs **locally**. It isn't hosted: it loads a local embedding
+model and a local vector store, and the Gemini free tier is the only service
+it calls.
+
+**What the environment needs**
+
+- Python 3.11 or newer (developed on 3.12)
+- About 1 GB of disk for `.venv` plus the ~80 MB embedding model
+- Network access to `generativelanguage.googleapis.com` (Gemini) and, on the
+  first run only, `chroma-onnx-models.s3.amazonaws.com` (embedding model)
+- A free Gemini API key from https://aistudio.google.com
+
+**From a fresh clone to the first logged answer**
+
+```powershell
+git clone https://github.com/malki-aal/ai201-project1-unofficial-guide-starter-v2026.git
+cd ai201-project1-unofficial-guide-starter-v2026
+python -m venv .venv
+.venv\Scripts\Activate.ps1            # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+copy .env.example .env                # macOS/Linux: cp .env.example .env
+#   open .env and replace your_key_here with your Gemini key
+python test.py                        # should end "10 passed"
+python app.py index                   # builds chroma_db/ (not in git)
+python app.py ask "is the housing lottery random?"
+```
+
+Or as a web service: `python serve.py`, then
+`POST http://127.0.0.1:5000/ask` with `{"question": "..."}`.
+
+**Where the logs go**
+
+Every `ask` (command line or `/ask`) appends one JSON line to
+`logs/runs.jsonl`: ok, refused, failed and crashed runs alike.
+
+```bash
+python runlog.py            # last 10 runs as a table
+python runlog.py --stats    # averages over uncached ok runs (the cost number)
+```
+
+| `status` | Meaning |
+|---|---|
+| `ok` | Answered |
+| `refused` | Relevance gate said no; Gemini was never called |
+| `failed` | Gemini call failed and the user got a fallback message (`failure_kind` says why) |
+| `error` | Something outside generation crashed (e.g. no index); still logged |
+
+**Triggering the failure paths on purpose** (`AI201_CACHE=0` makes every run a
+real call instead of a cached answer):
+
+| Failure | How (PowerShell: `$env:NAME="value"` first, then run) |
+|---|---|
+| Timeout | `AI201_TIMEOUT_S=0.05` |
+| Bad API key | `GEMINI_API_KEY=not-a-real-key` |
+| Network down | `HTTPS_PROXY=http://127.0.0.1:9` |
+
+Clear them afterwards (`Remove-Item Env:NAME`), or just open a new terminal.
+
+---
+
 ## Before your first class
 
 Setup happens **before class**, not during it. The
