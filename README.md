@@ -489,3 +489,25 @@ write it next time as "the exact fact the question asks about appears as
 text in the chunk, not just something a reasonable person could conclude from
 it" — spelling out the distinction before a real answer forces me to invent
 it under pressure.
+
+---
+
+## Capstone
+
+**System**
+
+The Unofficial Guide: a RAG system over the `campus_life` corpus that chunks, retrieves, gates on relevance, and answers with Gemini (`app.py ask`, `serve.py`).
+
+**Shape**
+
+B: Harden against failure.
+
+**The Shape**
+
+I'm hardening the one place this system talks to the outside world: the Gemini call in `generate.py`. Right now three things go wrong there. The call has no timeout, so a slow or dead network hangs the run forever. Any error that isn't a 429 (a 500/503, a bad key, the network dropping) is raised immediately with no retry and kills the run. And when Gemini returns empty text (for example a safety block), `""` goes back to the user as the "answer". After the extension, every `ask` either returns a real answer or returns a clear, specific fallback message saying what went wrong. A failure in generation never crashes the run, hangs, or shows a blank answer, and every one of those outcomes, good or bad, leaves a structured log entry.
+
+**Out of scope**
+
+- **Input validation.** I'm not adding checks for empty, whitespace-only, or very long questions before retrieval. That's a different stage (before `search`) and a separate piece of work.
+- **Retrieval and index failures.** If `chroma_db` is missing or corrupt, `store.search` still raises the way it does now. I'm not touching chunking, the embedder, or the store.
+- **Answer correctness.** The wifi/"free" grounding problem from What's Still Broken stays broken. That's the model asserting facts the chunks don't state, not a crash, and fixing it means a verification pass, not error handling.
