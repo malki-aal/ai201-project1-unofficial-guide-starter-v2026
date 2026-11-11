@@ -69,6 +69,11 @@ REQUESTS_PER_MINUTE = 30       # outgoing calls the limiter will allow per minut
 SESSION_REQUEST_BUDGET = 300   # stop and warn rather than draining the daily quota
 MAX_RETRIES = 4                # on 429 / resource-exhausted, with backoff
 
+# Capstone hardening: how long one Gemini call may take before we give up on
+# it. Without this a dead network hangs `ask` forever. Override with
+# AI201_TIMEOUT_S (e.g. 0.01) to trigger the timeout path on purpose.
+GENERATION_TIMEOUT_S = float(os.getenv("AI201_TIMEOUT_S", "30"))
+
 CACHE_ENABLED = os.getenv("AI201_CACHE", "1") != "0"
 CACHE_DIR = ROOT / ".cache"
 

@@ -195,7 +195,12 @@ def _get_client():
                 "Copy .env.example to .env and paste your key in, then try "
                 "again. `python test.py` will confirm it's working."
             )
-        _client = genai.Client(api_key=key)
+        # The SDK takes the timeout in milliseconds. Without one, a call over a
+        # dead connection waits forever.
+        _client = genai.Client(
+            api_key=key,
+            http_options={"timeout": int(config.GENERATION_TIMEOUT_S * 1000)},
+        )
     return _client
 
 
