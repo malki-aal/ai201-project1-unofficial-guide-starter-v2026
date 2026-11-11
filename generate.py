@@ -269,9 +269,21 @@ def _get_client():
             )
         # The SDK takes the timeout in milliseconds. Without one, a call over a
         # dead connection waits forever.
+        #
+        # The SDK also forwards the timeout to Google as X-Server-Timeout, and
+        # Gemini rejects anything under 10s with a 400 ("Minimum allowed
+        # deadline is 10s"). So a short timeout raced: sometimes our timeout
+        # fired, sometimes Google's 400 came back first and it was logged as a
+        # "client" failure. Pinning the server header to >= 10s means the
+        # client-side timeout is the one that decides. (Found in M3 logs.)
+        import math
+        timeout_s = config.GENERATION_TIMEOUT_S
         _client = genai.Client(
             api_key=key,
-            http_options={"timeout": int(config.GENERATION_TIMEOUT_S * 1000)},
+            http_options={
+                "timeout": int(timeout_s * 1000),
+                "headers": {"X-Server-Timeout": str(max(10, math.ceil(timeout_s)))},
+            },
         )
     return _client
 
