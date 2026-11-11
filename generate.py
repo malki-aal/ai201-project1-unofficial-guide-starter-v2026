@@ -319,10 +319,25 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
             _record_tokens(response)
             text = (response.text or "").strip()
 
+            if not text:
+                # A safety block or a cut-off response comes back as no text.
+                # Used to be returned (and cached) as a blank "answer".
+                reason = ""
+                try:
+                    reason = str(response.candidates[0].finish_reason)
+                except Exception:  # noqa: BLE001 — the reason is a nice-to-have
+                    pass
+                raise GenerationError(
+                    "empty", detail=f"finish_reason={reason or 'unknown'}",
+                    attempts=attempt + 1,
+                )
+
             if use_cache:
                 _cache_write(key, text)
             return text
 
+        except GenerationError:
+            raise  # already classified (the empty-response case above)
         except Exception as exc:  # noqa: BLE001 — classified below
             last_error = exc
             kind = classify_failure(exc)

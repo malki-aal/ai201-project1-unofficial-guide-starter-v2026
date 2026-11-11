@@ -201,7 +201,7 @@ def ask_pipeline(
     """
     from store import search
     import gate
-    from generate import answer_from_chunks, build_prompt
+    from generate import GenerationError, answer_from_chunks, build_prompt
 
     results = search(
         question,
@@ -231,8 +231,20 @@ def ask_pipeline(
         on_prompt(prompt)
 
     outcome["prompt"] = prompt
-    outcome["answer"] = answer_from_chunks(question, results)
     outcome["sources"] = sorted({r.source for r in results})
+    outcome["failed"] = False
+    outcome["failure_kind"] = None
+    outcome["failure_detail"] = None
+
+    # Capstone hardening: a failed Gemini call is an outcome, not a crash.
+    # The user gets a specific fallback message; the caller gets the kind.
+    try:
+        outcome["answer"] = answer_from_chunks(question, results)
+    except GenerationError as exc:
+        outcome["answer"] = str(exc)
+        outcome["failed"] = True
+        outcome["failure_kind"] = exc.kind
+        outcome["failure_detail"] = exc.detail
     return outcome
 
 
@@ -276,6 +288,10 @@ def _ask_one(
     if outcome["refused"]:
         print(f"\n{gate.REFUSAL}\n")
         return gate.REFUSAL
+
+    if outcome.get("failed"):
+        print(f"\n[no answer: {outcome['failure_kind']}] {outcome['answer']}\n")
+        return outcome["answer"]
 
     print(f"\n{outcome['answer']}\n")
     print(f"Sources retrieved: {', '.join(outcome['sources'])}\n")

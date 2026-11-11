@@ -92,6 +92,24 @@ def ask():
     except Exception as exc:  # noqa: BLE001 — a reader gets this, not a traceback
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
+    # Capstone hardening: generation failed, but the pipeline handled it.
+    # 503 says "try again later"; the body still carries a readable answer.
+    if outcome.get("failed"):
+        return (
+            jsonify(
+                {
+                    "question": question,
+                    "answer": outcome["answer"],
+                    "failed": True,
+                    "failure_kind": outcome["failure_kind"],
+                    "refused": False,
+                    "sources": outcome["sources"],
+                    "corpus": config.CORPUS,
+                }
+            ),
+            503,
+        )
+
     return jsonify(
         {
             "question": question,
