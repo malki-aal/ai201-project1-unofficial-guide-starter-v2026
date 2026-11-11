@@ -73,6 +73,7 @@ MAX_RETRIES = 4                # on 429 / resource-exhausted, with backoff
 # it. Without this a dead network hangs `ask` forever. Override with
 # AI201_TIMEOUT_S (e.g. 0.01) to trigger the timeout path on purpose.
 GENERATION_TIMEOUT_S = float(os.getenv("AI201_TIMEOUT_S", "30"))
+TRANSIENT_RETRIES = 2          # attempts for timeouts / 5xx / network drops
 
 CACHE_ENABLED = os.getenv("AI201_CACHE", "1") != "0"
 CACHE_DIR = ROOT / ".cache"

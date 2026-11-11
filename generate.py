@@ -49,6 +49,78 @@ class QuotaGuard(Exception):
     """Raised when a session blows through its request budget."""
 
 
+# ─── Capstone hardening: what can go wrong in the call ──────────────────────
+# Every failure of the Gemini call ends up as one GenerationError with a `kind`
+# saying which failure it was. Callers (ask_pipeline, serve.py) catch this one
+# type and turn it into a fallback answer instead of crashing.
+
+# kind -> (retry it?, message the user sees)
+FAILURE_KINDS = {
+    "timeout": (True, "The answer service took too long to respond, so there's "
+                      "no answer this time. Your question was fine; try again "
+                      "in a moment."),
+    "network": (True, "Couldn't reach the answer service. Check your internet "
+                      "connection and try again."),
+    "server": (True, "The answer service is having problems on its end right "
+                     "now. Try again in a few minutes."),
+    "rate_limit": (True, "The answer service is getting too many requests. "
+                         "Wait a minute and try again."),
+    "auth": (False, "The answer service rejected the API key, so no answer "
+                    "can be generated. Check GEMINI_API_KEY in .env."),
+    "empty": (False, "The answer service sent back an empty response, so "
+                     "there's no answer to show. Try rephrasing the question."),
+    "client": (False, "The answer service refused this request, so there's no "
+                      "answer to show."),
+    "unknown": (False, "Something unexpected went wrong while writing the "
+                       "answer, so there's no answer to show."),
+}
+
+
+class GenerationError(RuntimeError):
+    """The Gemini call failed in a way we recognise. `str()` is user-safe."""
+
+    def __init__(self, kind: str, detail: str = "", attempts: int = 1):
+        self.kind = kind if kind in FAILURE_KINDS else "unknown"
+        self.detail = detail
+        self.attempts = attempts
+        super().__init__(FAILURE_KINDS[self.kind][1])
+
+
+def classify_failure(exc: Exception) -> str:
+    """Name which failure this exception is. One of FAILURE_KINDS' keys."""
+    if isinstance(exc, GenerationError):
+        return exc.kind
+
+    message = str(exc).lower()
+    name = type(exc).__name__.lower()
+
+    if "429" in message or ("resource" in message and "exhaust" in message) \
+            or ("rate" in message and "limit" in message):
+        return "rate_limit"
+    if "gemini_api_key" in message or "api key" in message \
+            or "api_key_invalid" in message or "permission_denied" in message:
+        return "auth"
+
+    try:
+        from google.genai import errors as genai_errors
+        if isinstance(exc, genai_errors.APIError):
+            code = getattr(exc, "code", 0) or 0
+            if code in (401, 403):
+                return "auth"
+            if code >= 500:
+                return "server"
+            return "client"
+    except ImportError:
+        pass
+
+    if "timeout" in name or "timed out" in message:
+        return "timeout"
+    if "connect" in name or "network" in name or "connection" in message \
+            or "getaddrinfo" in message or "name resolution" in message:
+        return "network"
+    return "unknown"
+
+
 # ─── Cache ───────────────────────────────────────────────────────────────────
 
 
@@ -251,28 +323,33 @@ def generate(prompt: str, system: str | None = None, cache: bool = True) -> str:
                 _cache_write(key, text)
             return text
 
-        except Exception as exc:  # noqa: BLE001 — surfaced below
+        except Exception as exc:  # noqa: BLE001 — classified below
             last_error = exc
-            message = str(exc).lower()
-            rate_limited = (
-                "429" in message
-                or "resource" in message and "exhaust" in message
-                or "rate" in message and "limit" in message
-            )
-            if not rate_limited:
-                raise
+            kind = classify_failure(exc)
+            retryable = FAILURE_KINDS[kind][0]
+            # 429s get the full MAX_RETRIES; other transient failures get
+            # fewer, so a dead network fails in seconds rather than minutes.
+            limit = config.MAX_RETRIES if kind == "rate_limit" else config.TRANSIENT_RETRIES
+            if not retryable or attempt + 1 >= limit:
+                raise GenerationError(
+                    kind,
+                    detail=f"{type(exc).__name__}: {exc}",
+                    attempts=attempt + 1,
+                ) from exc
             backoff = 2 ** attempt
             print(
-                f"  [rate limit] service pushed back. Retrying in {backoff}s "
-                f"(attempt {attempt + 1} of {config.MAX_RETRIES}).",
+                f"  [{kind}] call failed. Retrying in {backoff}s "
+                f"(attempt {attempt + 1} of {limit}).",
                 file=sys.stderr,
                 flush=True,
             )
             time.sleep(backoff)
 
-    raise RuntimeError(
-        f"Still rate limited after {config.MAX_RETRIES} attempts. Wait a "
-        f"minute and try again — your key is fine.\nLast error: {last_error}"
+    # Only reachable if MAX_RETRIES is 0.
+    raise GenerationError(
+        classify_failure(last_error) if last_error else "unknown",
+        detail=str(last_error),
+        attempts=config.MAX_RETRIES,
     )
 
 
