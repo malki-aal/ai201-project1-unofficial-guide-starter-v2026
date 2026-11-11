@@ -511,3 +511,94 @@ I'm hardening the one place this system talks to the outside world: the Gemini c
 - **Input validation.** I'm not adding checks for empty, whitespace-only, or very long questions before retrieval. That's a different stage (before `search`) and a separate piece of work.
 - **Retrieval and index failures.** If `chroma_db` is missing or corrupt, `store.search` still raises the way it does now. I'm not touching chunking, the embedder, or the store.
 - **Answer correctness.** The wifi/"free" grounding problem from What's Still Broken stays broken. That's the model asserting facts the chunks don't state, not a crash, and fixing it means a verification pass, not error handling.
+
+**Instrumentation**
+
+Every question that goes through `app.py::ask_pipeline` (the command line and `serve.py` both use it) appends one JSON object to [`logs/runs.jsonl`](logs/runs.jsonl). The logger is [`runlog.py`](runlog.py). The record is written in a `finally` block, so a run that crashes still leaves a line. `python runlog.py` prints the last 10 as a table; `python runlog.py --stats` averages them.
+
+Fields: `run_id`, `timestamp` (UTC), `entrypoint` (cli/http), `question`, `corpus`, `model`, `status` (`ok` / `refused` / `failed` = handled generation failure / `error` = crash), `answer`, `failure_kind` (timeout, network, server, rate_limit, auth, client, empty, unknown, crash), `failure_detail` (the raw exception), `best_distance`, `threshold`, `chunks_retrieved`, `sources`, `model_calls` (includes retries), `cache_hit`, `tokens_in`, `tokens_out` (read off Gemini's `usage_metadata`), `retrieval_s`, `generation_s`, `duration_s`, `timeout_s`.
+
+The 10 measured runs (the 5 questions in `questions.py`, twice each, `AI201_CACHE=0` so every one is a real call):
+
+```json
+{"run_id": "dbbfe90a", "timestamp": "2026-11-11T23:45:14+00:00", "entrypoint": "cli", "question": "How many credit hours are required to graduate?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "To graduate, 120 credit hours are required. \n\nSource: admin_graduation_requirements.txt", "failure_kind": null, "failure_detail": null, "best_distance": 0.2886, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "course_stat_150.txt", "course_stat_150_workload.txt", "money_jobs.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 577, "tokens_out": 23, "retrieval_s": 1.015, "generation_s": 4.312, "duration_s": 8.762, "timeout_s": 30.0}
+{"run_id": "e66f60c7", "timestamp": "2026-11-11T23:45:23+00:00", "entrypoint": "cli", "question": "What is the last semester to declare a major", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "You can declare at the end of your second semester, or later if you need to; the documents do not state a final deadline or last semester to declare. \n\nSource: admin_declaring_a_major.txt", "failure_kind": null, "failure_detail": null, "best_distance": 0.3553, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_add_drop_deadline.txt", "admin_declaring_a_major.txt", "admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "admin_study_abroad.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 534, "tokens_out": 46, "retrieval_s": 0.053, "generation_s": 0.537, "duration_s": 0.59, "timeout_s": 30.0}
+{"run_id": "9c312294", "timestamp": "2026-11-11T23:45:23+00:00", "entrypoint": "cli", "question": "How many mid-terms are there in math220 Linear Algebra?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "There are two midterms in MATH 220 Linear Algebra, according to `course_math_220.txt` and `course_math_220_exams.txt`.", "failure_kind": null, "failure_detail": null, "best_distance": 0.4045, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["course_cs_210_exams.txt", "course_cs_340_exams.txt", "course_math_220.txt", "course_math_220_exams.txt", "course_math_220_workload.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 549, "tokens_out": 41, "retrieval_s": 0.046, "generation_s": 0.452, "duration_s": 0.497, "timeout_s": 30.0}
+{"run_id": "38fc317f", "timestamp": "2026-11-11T23:45:24+00:00", "entrypoint": "cli", "question": "Do students receive free campus wifi?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "Yes, your student account gives you campus wifi. This information comes from `admin_wifi_and_accounts.txt`.", "failure_kind": null, "failure_detail": null, "best_distance": 0.4162, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_campus_jobs_and_financial_aid.txt", "admin_printing_quota.txt", "admin_wifi_and_accounts.txt", "money_textbooks.txt", "transit_shuttle.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 466, "tokens_out": 25, "retrieval_s": 0.049, "generation_s": 0.489, "duration_s": 0.538, "timeout_s": 30.0}
+{"run_id": "cc8f0691", "timestamp": "2026-11-11T23:45:24+00:00", "entrypoint": "cli", "question": "Does east parking lots ever sell out?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "No, the east lot never sells out because it is a 12-minute walk. \n\nSource: admin_parking_permits.txt", "failure_kind": null, "failure_detail": null, "best_distance": 0.2558, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "dining_halden_hall.txt", "dining_the_atrium.txt", "housing_aldridge_hall_laundry.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 566, "tokens_out": 31, "retrieval_s": 0.044, "generation_s": 0.441, "duration_s": 0.485, "timeout_s": 30.0}
+{"run_id": "b35c0c40", "timestamp": "2026-11-11T23:45:25+00:00", "entrypoint": "cli", "question": "How many credit hours are required to graduate?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "120 credit hours are required to graduate, as stated in admin_graduation_requirements.txt.", "failure_kind": null, "failure_detail": null, "best_distance": 0.2886, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "course_stat_150.txt", "course_stat_150_workload.txt", "money_jobs.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 577, "tokens_out": 21, "retrieval_s": 0.049, "generation_s": 0.524, "duration_s": 0.573, "timeout_s": 30.0}
+{"run_id": "403cb0c1", "timestamp": "2026-11-11T23:45:25+00:00", "entrypoint": "cli", "question": "What is the last semester to declare a major", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "Based on the documents provided, you declare at the end of your second semester, or later if you need to; a specific \"last semester\" is not stated. \n\nSource: admin_declaring_a_major.txt", "failure_kind": null, "failure_detail": null, "best_distance": 0.3553, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_add_drop_deadline.txt", "admin_declaring_a_major.txt", "admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "admin_study_abroad.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 534, "tokens_out": 47, "retrieval_s": 0.044, "generation_s": 0.533, "duration_s": 0.577, "timeout_s": 30.0}
+{"run_id": "394aa643", "timestamp": "2026-11-11T23:45:26+00:00", "entrypoint": "cli", "question": "How many mid-terms are there in math220 Linear Algebra?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "There are two midterms in MATH 220 Linear Algebra. This information comes from `course_math_220.txt` and `course_math_220_exams.txt`.", "failure_kind": null, "failure_detail": null, "best_distance": 0.4045, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["course_cs_210_exams.txt", "course_cs_340_exams.txt", "course_math_220.txt", "course_math_220_exams.txt", "course_math_220_workload.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 549, "tokens_out": 43, "retrieval_s": 0.048, "generation_s": 0.459, "duration_s": 0.507, "timeout_s": 30.0}
+{"run_id": "de9557ec", "timestamp": "2026-11-11T23:45:26+00:00", "entrypoint": "cli", "question": "Do students receive free campus wifi?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "Yes, your student account gives you campus wifi. \n\nSource: `admin_wifi_and_accounts.txt`", "failure_kind": null, "failure_detail": null, "best_distance": 0.4162, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_campus_jobs_and_financial_aid.txt", "admin_printing_quota.txt", "admin_wifi_and_accounts.txt", "money_textbooks.txt", "transit_shuttle.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 466, "tokens_out": 25, "retrieval_s": 0.056, "generation_s": 0.494, "duration_s": 0.55, "timeout_s": 30.0}
+{"run_id": "de86a01d", "timestamp": "2026-11-11T23:45:27+00:00", "entrypoint": "cli", "question": "Does east parking lots ever sell out?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "No, the east lot never sells out because it is a 12-minute walk. \n\nSource: admin_parking_permits.txt", "failure_kind": null, "failure_detail": null, "best_distance": 0.2558, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "dining_halden_hall.txt", "dining_the_atrium.txt", "housing_aldridge_hall_laundry.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 566, "tokens_out": 31, "retrieval_s": 0.055, "generation_s": 1.84, "duration_s": 1.895, "timeout_s": 30.0}
+```
+
+Failed and refused runs, each triggered on purpose:
+
+- **Timeout trigger, misclassified (before the fix).** `AI201_TIMEOUT_S=0.05`, but Gemini's 400 *"Minimum allowed deadline is 10s"* came back before our own timeout fired, so it was logged as `client`. This log line is how I found the bug fixed in `949f879`.
+
+```json
+{"run_id": "60f5caa1", "timestamp": "2026-11-11T23:45:32+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "The answer service refused this request, so there's no answer to show.", "failure_kind": "client", "failure_detail": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'Manually set deadline 1s is too short. Minimum allowed deadline is 10s.', 'status': 'INVALID_ARGUMENT'}}", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.746, "generation_s": 4.076, "duration_s": 4.822, "timeout_s": 0.05}
+```
+
+- **Timeout, after the fix.** Same trigger, now logged as `timeout`. 2 model calls = first attempt + 1 retry, then the fallback message.
+
+```json
+{"run_id": "820c4ed9", "timestamp": "2026-11-11T23:46:47+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "The answer service took too long to respond, so there's no answer this time. Your question was fine; try again in a moment.", "failure_kind": "timeout", "failure_detail": "ReadTimeout: The read operation timed out", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 1.213, "generation_s": 4.795, "duration_s": 6.008, "timeout_s": 0.05}
+```
+
+- **Bad API key.** `GEMINI_API_KEY=not-a-real-key`. `auth`, 1 model call: not retried, because retrying a bad key can't help.
+
+```json
+{"run_id": "fdb9e0ae", "timestamp": "2026-11-11T23:45:39+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "The answer service rejected the API key, so no answer can be generated. Check GEMINI_API_KEY in .env.", "failure_kind": "auth", "failure_detail": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.596, "generation_s": 2.408, "duration_s": 3.004, "timeout_s": 30.0}
+```
+
+- **Network down.** `HTTPS_PROXY=http://127.0.0.1:9`. `network`, 2 model calls (retried once).
+
+```json
+{"run_id": "de5b0aca", "timestamp": "2026-11-11T23:45:45+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.599, "generation_s": 7.338, "duration_s": 7.938, "timeout_s": 30.0}
+```
+
+- **Crash outside generation (out of scope, but still logged).** Index folder moved away. `status: error`. The `finally` block wrote the record even though the run died.
+
+```json
+{"run_id": "1f1925c1", "timestamp": "2026-11-11T23:39:59+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "error", "answer": null, "failure_kind": "crash", "failure_detail": "RuntimeError: No index called 'campus_life__default'. Run `python app.py index` first.", "best_distance": null, "threshold": null, "chunks_retrieved": null, "sources": [], "model_calls": 0, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": null, "generation_s": null, "duration_s": 0.578, "timeout_s": 30.0}
+```
+
+- **Refused input.** Off-topic question; the relevance gate refused it and Gemini was never called (0 model calls, 0 tokens).
+
+```json
+{"run_id": "2396318a", "timestamp": "2026-11-11T23:45:55+00:00", "entrypoint": "cli", "question": "Who won the 1994 World Cup?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "refused", "answer": "I don't have enough information about that.", "failure_kind": null, "failure_detail": null, "best_distance": 0.823, "threshold": 0.6, "chunks_retrieved": 5, "sources": [], "model_calls": 0, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.593, "generation_s": null, "duration_s": 0.593, "timeout_s": 30.0}
+```
+
+
+**What It Costs**
+
+**Measured: 538.4 input tokens + 33.3 output tokens per answered question, and 1.50 s wall-clock** (average of the 10 runs above, `dbbfe90a` → `de86a01d`).
+
+How I measured it: each log record's `tokens_in` / `tokens_out` is the difference in `generate.token_counts()` before and after the run. Those counts are read off the `usage_metadata` Gemini sends back with each response, not estimated from the prompt length. Duration is `time.perf_counter()` around the whole of `ask_pipeline`. I averaged exactly those 10 rows (the log's other `ok` rows are smoke tests). To reproduce it:
+
+```bash
+python runlog.py --stats dbbfe90a e66f60c7 9c312294 38fc317f cc8f0691 b35c0c40 403cb0c1 394aa643 de9557ec de86a01d
+```
+
+| | avg | min | max |
+|---|---|---|---|
+| tokens_in | 538.4 | 466 | 577 |
+| tokens_out | 33.3 | 21 | 47 |
+| duration_s | 1.497 | 0.485 | 8.762 |
+| retrieval_s | 0.146 | 0.044 | 1.015 |
+| generation_s | 1.008 | 0.441 | 4.312 |
+
+The 8.76 s max is the first run in the process (it loads the embedding model and opens Chroma). Every run after that was under 2 s.
+
+**In dollars:** I'm on the Gemini free tier, so the **actual spend was $0.00**. At paid-tier prices of $0.30 / 1M input and $2.50 / 1M output tokens (third-party listings for `gemini-3.5-flash-lite`, not yet checked against Google's own pricing page):
+
+```
+538.4 × $0.30 / 1,000,000 = $0.000162
+ 33.3 × $2.50 / 1,000,000 = $0.000083
+                            ---------
+                            $0.000245 per answered question
+```
+
+A refused question costs $0 in API calls (0 tokens) and about 0.6 s. A failed one costs 0 tokens but up to 2 calls' worth of waiting.

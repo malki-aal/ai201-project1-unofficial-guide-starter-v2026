@@ -8,7 +8,8 @@ write happens in a `finally`, so a crash still leaves a record.
 
 Read it back with:
     python runlog.py            # last 10 runs as a table
-    python runlog.py --stats    # averages over every ok run
+    python runlog.py --stats    # averages over every uncached ok run
+    python runlog.py --stats ID ID ...   # ... or over just those run_ids
 """
 
 import json
@@ -89,6 +90,9 @@ def _main(argv: list[str]) -> None:
     rows = read_all()
     if "--stats" in argv:
         ok = [r for r in rows if r.get("status") == "ok" and not r.get("cache_hit")]
+        ids = [a for a in argv if not a.startswith("--")]
+        if ids:  # e.g. `python runlog.py --stats dbbfe90a e66f60c7 ...`
+            ok = [r for r in ok if r.get("run_id") in ids]
         if not ok:
             print("No uncached ok runs logged yet.")
             return
