@@ -12,7 +12,8 @@ it calls.
 
 **What the environment needs**
 
-- Python 3.11 or newer (developed on 3.12)
+- Python 3.11, 3.12 or 3.13. **Not 3.14**: the pinned packages don't
+  support it yet. (Developed and fresh-clone tested on 3.12.6.)
 - About 1 GB of disk for `.venv` plus the ~80 MB embedding model
 - Network access to `generativelanguage.googleapis.com` (Gemini) and, on the
   first run only, `chroma-onnx-models.s3.amazonaws.com` (embedding model)
@@ -40,6 +41,10 @@ Or as a web service: `python serve.py`, then
 
 Every `ask` (command line or `/ask`) appends one JSON line to
 `logs/runs.jsonl`: ok, refused, failed and crashed runs alike.
+
+`logs/runs.jsonl` is committed as evidence, so a fresh clone already has
+my runs in it. Your new runs are appended at the bottom. To start clean,
+delete the file; it's recreated on the next `ask`.
 
 ```bash
 python runlog.py            # last 10 runs as a table
