@@ -603,6 +603,17 @@ The 8.76 s max is the first run in the process (it loads the embedding model and
 
 A refused question costs $0 in API calls (0 tokens) and about 0.6 s. A failed one costs 0 tokens but up to 2 calls' worth of waiting.
 
+**For 100 people a day**, assuming each person asks 5 questions and every one is answered (the worst case, since refusals and failures cost $0):
+
+```
+100 people × 5 questions          = 500 answered questions / day
+500 × $0.000245                   = $0.12 / day
+$0.12 × 30 days                   = $3.68 / month
+tokens: 500 × (538.4 + 33.3)      = 285,850 tokens / day
+```
+
+So running this for a hundred people a day would cost about **12 cents a day (≈ $3.68 a month)** at paid-tier prices. Money isn't the real limit here; the free tier's request quotas and the 30-requests-per-minute pacing in `config.py` would hit first.
+
 **Run Log**
 
 Criteria: [`capstone_criteria.md`](capstone_criteria.md), committed in `2dba265` before any of these results. The runner is [`capstone_eval.py`](capstone_eval.py) (committed in `2c062d1`, also before results). Each trial is `python capstone_eval.py N`. Nothing was changed between the three trials. Raw output is in `results/capstone_trial_{1,2,3}.txt` and `.json`. Every log line below was written to `logs/runs.jsonl` by `runlog.py::write()`, called from the `finally` block in `app.py::ask_pipeline`. The scores were computed by `capstone_eval.py::score()`.
@@ -752,3 +763,31 @@ One change (`d4a6741`): `generate.prewarm()` starts importing the SDK and buildi
 - **What missed after the fix:** two runs in after-trial 3, `1bdad081` (10.769 s) and `8b582184` (12.628 s). In both, retrieval *and* generation were slow at the same time (retrieval 2.926 / 3.34 s versus the usual ~1 s), which looks like the machine being briefly busy rather than one stage. The remaining floor is ≈ 7 s of generation: 2 × 2.04 s refused connects, 1 s backoff and ≈ 1.9 s of cold start the overlap didn't hide. That leaves about 2 s of headroom, and a busy moment uses it up.
 - **The trade-off:** the next obvious fix is to stop retrying a refused connection, which would save ≈ 3 s. That would break criterion 3, which requires network failures to be retried once. I'd rather miss 4 by a couple of seconds now and then than give up a retry that helps real dropped connections.
 - **Normal path:** still 10/10 in every trial (averages 1.279, 1.429, 1.246 s), so the fix didn't cost anything there.
+
+**What's Still Broken**
+
+- **Criterion 4 (MISSED): network-down fallback can still take more than 10 s.** What I'd do: give `generate()` one total deadline for the whole call, including retries (for example 8 s), instead of a timeout per attempt. When the deadline is close, it would skip the second attempt and return the fallback right away. That keeps the retry when there's time for it (criterion 3) and caps the wait (criterion 4). Why I stopped: M6 allows one fix, and I spent it on the SDK cold start because that was the cost all three failure types shared. Stopping retries on a refused connection would have been simpler, but it breaks criterion 3, and I didn't want to trade one miss for another.
+- **The miss is partly a Windows effect.** A refused connection takes 2.04 s on this machine because Windows retries it before giving up. My network trigger (a dead local proxy) measures that behavior, not a real outage. I haven't measured it on Linux or macOS, where the same run would likely pass.
+- **A real hang at the default timeout is slow, and untested.** All my timeout runs forced `AI201_TIMEOUT_S=0.05`. At the default 30 s, a truly hung call would take about 61 s (2 × 30 s plus the backoff) before the user sees anything. The criteria never tested this, and the total-deadline fix above would cover it.
+- **Empty responses are only tested with a fake client.** `failure_kind: "empty"` works against a fake that returns no text, but I couldn't make Gemini return a real empty response on demand, so no criterion covers it.
+- **Criteria set too low.** Criterion 3 is close to guaranteed: it checks a fixed code path, so it was always going to be 45/45. Criterion 1's "4 of 5" allowance was never needed (45/45 named correctly once the M3 timeout race was fixed). I'd tighten criterion 1 to **5 of 5 per type**. I'd replace criterion 3 with one that can actually fail: **a real hang at the default 30 s timeout returns the fallback within 35 s, 5 of 5.**
+- **Still out of scope, unchanged:** input validation before retrieval, crashes when the index is missing (still `status: "error"`, though now logged), and the wifi/"free" grounding problem from the earlier unit.
+
+**What I'd Do Next**
+
+I'd replace the per-attempt timeout with a single deadline for the whole Gemini call, retries included. It's the one change that fixes the criterion 4 miss and the untested 61-second hang together, without giving up the retry that criterion 3 protects.
+
+**How I Used AI (Capstone)**
+
+I used Claude (Claude Code, in VS Code) throughout the capstone, more heavily than in earlier units. Being specific about who did what:
+
+- **M1:** I chose this project and Shape B. Claude read the code, listed the real failure gaps (no timeout, non-429 errors not retried, empty responses shown as blank), and wrote the Shape and Out of scope text, which I reviewed. It then did the brief's scope count and told me the plan held about 3–4 pieces. I kept them together as one hardening layer around the Gemini call rather than cutting.
+- **M2–M3:** Claude wrote the hardening code (`generate.py`, `app.py`, `serve.py`), the logger (`runlog.py`), and the capstone section of `RUNNING.md`. It also ran the fresh-clone test and the 10 cost runs. The per-token price came from a web search of third-party listings, not Google's page, and the README says so.
+- **M4:** the criteria were drafted by Claude at my instructor's direction (noted at the top of `capstone_criteria.md`). The "at least 4 of 5" target in criterion 1 is mine. Claude first refused to write them, because the brief says to write them unaided, and only drafted them after I explained my instructor's exception.
+- **M5–M6:** Claude wrote the test runner, ran all six trials, measured each piece of the network-down time, and made the one fix. I decided to keep criterion 3's retry policy rather than trade it away for criterion 4.
+
+Where the AI was wrong, and how it got caught:
+- **Its first diagnosis guess was wrong.** It guessed the Gemini SDK was quietly retrying connection errors on its own. Reading the SDK source (`retry_options` defaults to `None`, meaning one attempt) and timing each piece showed the real cause: the 3.5 s cold start plus Windows' 2 s connection refusal.
+- **It wrote a claim it couldn't back.** It wrote "the averaging script is in the commit history" when it wasn't. It caught this itself and replaced it with a command anyone can re-run (`python runlog.py --stats <ids>`).
+- **It moved my vector index by mistake.** While testing the "missing index" crash, it renamed `chroma_db`, Chroma created a new empty one, and moving the folder back put the real index inside it. It noticed and restored it. The index is rebuildable, so nothing was lost, but I'd now back up rather than rename.
+- **The logs exposed a real bug.** One "timeout" run was logged as `client`. That led to finding that Gemini rejects deadlines under 10 s, which the logs exposed rather than me noticing by hand.
