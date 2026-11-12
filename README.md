@@ -683,3 +683,72 @@ Network-down `duration_s` across all three trials: run 1: 9.502, 13.813, 11.06, 
 ```
 
 In-scope `duration_s` for run 1: 5.999, 0.833, 0.724, 0.618, 0.521, 0.809, 0.716, 0.682, 0.541, 0.72 → average 1.216 s.
+
+**Verdicts**
+
+| # | Criterion | Target | Verdict |
+|---|---|---|---|
+| 1 | Failure named correctly (t/a/n) | ≥ 4 of 5 per type | MET |
+| 2 | No crashes | 0 of 15 | MET |
+| 3 | Retry counts (t/a/n) | 5 of 5 per type | MET |
+| 4 | Fallback ≤ 10 s (t/a/n) | 5 of 5 per type | **MISSED** |
+| 5 | Normal path (ok, avg, refused) | 10/10 ok, avg ≤ 2.0 s, 5/5 refused | MET |
+
+- **1: MET.** 15/15 named correctly in every trial, beating the 4-of-5 allowance. The timeout race found in M3 didn't come back after the `X-Server-Timeout` fix.
+- **2: MET.** 0 crashes in 45 triggered runs: every one exited 0 with `status: "failed"` and no traceback.
+- **3: MET.** Exact `model_calls` in 45/45 runs.
+- **4: MISSED.** Network-down runs: 3/5, 5/5, 4/5 within 10 s. Timeout and bad-key runs were 5/5 in all three trials. The target has to hold in every trial, and it didn't.
+- **5: MET.** 10/10 answered each trial (averages 1.216, 1.286, 1.362 s, against the 1.50 s M3 baseline), 5/5 off-topic refused with 0 model calls.
+
+**Diagnosis**
+
+**Criterion 4.** The stage is **generation** (`generate.py::generate` → `_get_client` and the retry loop), not retrieval. Across trial 1's five network-down runs, `retrieval_s` was 0.66–2.12 s but `generation_s` was 8.5–11.7 s.
+
+The mechanism is that generation time in a failure was mostly *fixed* costs that have nothing to do with the failure, and my criterion assumed it was the retry policy. I timed each piece in a fresh process (3 runs each, very consistent):
+
+| Piece of a network-down run | Seconds | Why |
+|---|---|---|
+| Retrieval (embedder + Chroma, cold) | 1.6–1.8 | one-time per process |
+| `import google.genai` | 2.57–2.63 | done lazily inside the *first* Gemini call, after retrieval |
+| `genai.Client()` | 0.91–1.00 | same |
+| attempt 1 → `ConnectError` | 2.04 | Windows retries a refused TCP connect before giving up. A raw `socket.connect` to the dead port takes 2.04 s every time; on Linux it's near-instant |
+| backoff | 1.00 | `2 ** 0` |
+| attempt 2 → `ConnectError` | 2.04 | same |
+| **total** | **≈ 10.2–10.7** | |
+
+So a network-down run normally landed right on the 10 s line, and normal disk and CPU jitter decided which side. When I wrote the target, I reasoned from "2 attempts + 1 s backoff" and never counted the 3.5 s SDK cold start or Windows' 2 s connection refusal.
+
+**The pattern** is one problem with three symptoms, not just a network problem. All three failure types pay the same 3.5 s SDK cold start inside `generation_s`. That's why bad-key runs, which make one fast HTTP round trip, still took up to 9.35 s, and timeout runs up to 9.1 s. Network runs crossed the line first only because they also add 2 × 2.04 s of refused connects.
+
+I didn't touch the retry policy (2 attempts for network). Criterion 3 depends on it, and a dropped connection is the case a retry exists for.
+
+**The Improvement**
+
+One change (`d4a6741`): `generate.prewarm()` starts importing the SDK and building the client in a background thread at the top of `ask_pipeline`, so the 3.5 s cold start overlaps with retrieval instead of following it. `_get_client()` joins that thread rather than building a second client. No retry, timeout or classification logic changed. Then I re-ran all 5 criteria × 3 trials with the same runner (`python capstone_eval.py after_N`).
+
+**Before vs after** (t/a/n = timeout / auth / network):
+
+| Criterion | Before 1 | Before 2 | Before 3 | Before | After 1 | After 2 | After 3 | After |
+|---|---|---|---|---|---|---|---|---|
+| 1. Failure named correctly (t/a/n) | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET |
+| 2. No crashes | 0/15 | 0/15 | 0/15 | MET | 0/15 | 0/15 | 0/15 | MET |
+| 3. Retry counts (t/a/n) | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET |
+| 4. Fallback ≤ 10 s (t/a/n) | 5/5 / 5/5 / 3/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 4/5 | **MISSED** | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 3/5 | **MISSED** |
+| 5. Normal path (ok, avg, refused) | 10/10, 1.216s, 5/5 | 10/10, 1.286s, 5/5 | 10/10, 1.362s, 5/5 | MET | 10/10, 1.279s, 5/5 | 10/10, 1.429s, 5/5 | 10/10, 1.246s, 5/5 | MET |
+
+`duration_s` of triggered runs, all 15 per type across the three trials:
+
+| Failure | Before median | Before max | After median | After max |
+|---|---|---|---|---|
+| timeout | 4.862 s | 9.1 s | 4.321 s | 4.678 s |
+| auth | 3.406 s | 9.353 s | 3.174 s | 3.457 s |
+| network | 8.993 s | 13.813 s | 8.129 s | 12.628 s |
+
+**Did it help? Partly, and criterion 4 is still MISSED** (after: 5/5, 5/5, 3/5 for network).
+
+- **It helped the timeout and bad-key paths a lot.** Worst case went from 9.1 → 4.7 s and 9.35 → 3.5 s, so they're now far from the line instead of close to it.
+- **It helped network a little:** median 8.993 → 8.129 s. 2 of 3 trials now hit 5/5 (before: 1 of 3).
+- **Why only a little:** the overlap is partial. Importing the SDK and loading the embedder both mostly run Python code, so the two threads take turns on the GIL instead of running in parallel. Network `generation_s` dropped from ~7.3–8.7 s to ~6.8–7.5 s, but `retrieval_s` rose from ~0.7 s to ~0.9–1.2 s.
+- **What missed after the fix:** two runs in after-trial 3, `1bdad081` (10.769 s) and `8b582184` (12.628 s). In both, retrieval *and* generation were slow at the same time (retrieval 2.926 / 3.34 s versus the usual ~1 s), which looks like the machine being briefly busy rather than one stage. The remaining floor is ≈ 7 s of generation: 2 × 2.04 s refused connects, 1 s backoff and ≈ 1.9 s of cold start the overlap didn't hide. That leaves about 2 s of headroom, and a busy moment uses it up.
+- **The trade-off:** the next obvious fix is to stop retrying a refused connection, which would save ≈ 3 s. That would break criterion 3, which requires network failures to be retried once. I'd rather miss 4 by a couple of seconds now and then than give up a retry that helps real dropped connections.
+- **Normal path:** still 10/10 in every trial (averages 1.279, 1.429, 1.246 s), so the fix didn't cost anything there.
