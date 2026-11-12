@@ -779,7 +779,9 @@ I'd replace the per-attempt timeout with a single deadline for the whole Gemini 
 
 **How I Used AI (Capstone)**
 
-I used Claude (Claude Code, in VS Code) throughout the capstone, more heavily than in earlier units. Being specific about who did what:
+I worked with Claude (Claude Code, in VS Code) throughout the capstone. I made the project decisions: which system to extend, Shape B, the 4-of-5 target in criterion 1, and keeping criterion 3's retry policy instead of trading it away to pass criterion 4. I reviewed each milestone before moving on. Claude wrote most of the code and the first drafts of the write-ups, and it did the measurement and diagnosis work, which I checked against the logs.
+
+In more detail:
 
 - **M1:** I chose this project and Shape B. Claude read the code, listed the real failure gaps (no timeout, non-429 errors not retried, empty responses shown as blank), and wrote the Shape and Out of scope text, which I reviewed. It then did the brief's scope count and told me the plan held about 3–4 pieces. I kept them together as one hardening layer around the Gemini call rather than cutting.
 - **M2–M3:** Claude wrote the hardening code (`generate.py`, `app.py`, `serve.py`), the logger (`runlog.py`), and the capstone section of `RUNNING.md`. It also ran the fresh-clone test and the 10 cost runs. The per-token price came from a web search of third-party listings, not Google's page, and the README says so.
