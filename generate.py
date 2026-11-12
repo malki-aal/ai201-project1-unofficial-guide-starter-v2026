@@ -255,7 +255,43 @@ def token_counts() -> dict[str, int]:
 # ─── The call ────────────────────────────────────────────────────────────────
 
 
+_prewarm_thread = None
+
+
+def prewarm() -> None:
+    """Start importing the SDK and building the client in the background.
+
+    Capstone M6 fix. In a fresh process, `import google.genai` (~2.6 s) and
+    `genai.Client()` (~0.9 s) used to happen lazily inside the first call,
+    after retrieval had finished, so the two ran back to back. That 3.5 s
+    pushed failure fallbacks past the 10 s target (criterion 4).
+    `ask_pipeline` calls this before retrieval so the two overlap. Any error
+    here is swallowed; the real call in `_get_client` raises it properly.
+    """
+    global _prewarm_thread
+    if _client is not None or _prewarm_thread is not None:
+        return
+    import threading
+
+    def _build():
+        try:
+            _build_client()
+        except Exception:  # noqa: BLE001 — surfaced by the real call
+            pass
+
+    _prewarm_thread = threading.Thread(target=_build, daemon=True)
+    _prewarm_thread.start()
+
+
 def _get_client():
+    # If a prewarm is in flight, wait for it rather than building a second
+    # client alongside it.
+    if _prewarm_thread is not None and _prewarm_thread.is_alive():
+        _prewarm_thread.join()
+    return _build_client()
+
+
+def _build_client():
     global _client
     if _client is None:
         from google import genai

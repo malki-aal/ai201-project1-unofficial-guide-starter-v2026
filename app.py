@@ -248,7 +248,11 @@ def _ask_pipeline_inner(
     from store import search
     import gate
     import runlog
-    from generate import GenerationError, answer_from_chunks, build_prompt
+    from generate import GenerationError, answer_from_chunks, build_prompt, prewarm
+
+    # Capstone M6 fix: build the Gemini client while retrieval runs instead
+    # of after it. (If the gate refuses, the thread just finishes unused.)
+    prewarm()
 
     with runlog.Timer() as t_retrieve:
         results = search(
