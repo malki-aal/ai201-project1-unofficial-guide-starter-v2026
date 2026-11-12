@@ -602,3 +602,84 @@ The 8.76 s max is the first run in the process (it loads the embedding model and
 ```
 
 A refused question costs $0 in API calls (0 tokens) and about 0.6 s. A failed one costs 0 tokens but up to 2 calls' worth of waiting.
+
+**Run Log**
+
+Criteria: [`capstone_criteria.md`](capstone_criteria.md), committed in `2dba265` before any of these results. The runner is [`capstone_eval.py`](capstone_eval.py) (committed in `2c062d1`, also before results). Each trial is `python capstone_eval.py N`. Nothing was changed between the three trials. Raw output is in `results/capstone_trial_{1,2,3}.txt` and `.json`. Every log line below was written to `logs/runs.jsonl` by `runlog.py::write()`, called from the `finally` block in `app.py::ask_pipeline`. The scores were computed by `capstone_eval.py::score()`.
+
+A criterion is MET only if all 3 trials hit the target.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| 1. Each triggered failure is named correctly (timeout / auth / network) | ≥ 4 of 5 per type | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET |
+| 2. No triggered failure crashes the run | 0 of 15 crash | 0/15 | 0/15 | 0/15 | MET |
+| 3. Transient failures retried once, permanent ones not (timeout / auth / network) | 5 of 5 per type | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 5/5 | MET |
+| 4. Fallback message within 10 s (timeout / auth / network) | 5 of 5 per type | 5/5 / 5/5 / 3/5 | 5/5 / 5/5 / 5/5 | 5/5 / 5/5 / 4/5 | **MISSED** |
+| 5. Normal questions still work | 10/10 ok, avg ≤ 2.0 s, 5/5 refused | 10/10 ok, avg 1.216s, 5/5 refused | 10/10 ok, avg 1.286s, 5/5 refused | 10/10 ok, avg 1.362s, 5/5 refused | MET |
+
+These were real reruns, not cached repeats: all 90 `run_id`s across the three trials are unique, every run had `AI201_CACHE=0`, and the model's wording changes between trials. For example, the wifi answer was 23, 25 and 25 output tokens, with a different source citation format each time.
+
+
+*Criterion 1 (real output, run 1).* One log line per failure type, each with the expected `status: "failed"` and matching `failure_kind`:
+
+```json
+{"run_id": "0fd59a06", "timestamp": "2026-11-12T00:06:01+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "The answer service took too long to respond, so there's no answer this time. Your question was fine; try again in a moment.", "failure_kind": "timeout", "failure_detail": "ReadTimeout: The read operation timed out", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 1.354, "generation_s": 5.022, "duration_s": 6.376, "timeout_s": 0.05}
+{"run_id": "434ffa2b", "timestamp": "2026-11-12T00:06:50+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "The answer service rejected the API key, so no answer can be generated. Check GEMINI_API_KEY in .env.", "failure_kind": "auth", "failure_detail": "ClientError: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.89, "generation_s": 2.594, "duration_s": 3.484, "timeout_s": 30.0}
+{"run_id": "7eddd77b", "timestamp": "2026-11-12T00:07:53+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.769, "generation_s": 8.733, "duration_s": 9.502, "timeout_s": 30.0}
+```
+
+*Criterion 2 (real output, run 1).* Exit code and the last lines the user saw, captured by `capstone_eval.py::run_triggered()`. No traceback in any of the 15:
+
+```
+[timeout] exit_code=0 traceback=False
+    2 model calls this session
+      [timeout] call failed. Retrying in 1s (attempt 1 of 2).
+[auth] exit_code=0 traceback=False
+    [no answer: auth] The answer service rejected the API key, so no answer can be generated. Check GEMINI_API_KEY in .env.
+    1 model calls this session
+[network] exit_code=0 traceback=False
+    2 model calls this session
+      [network] call failed. Retrying in 1s (attempt 1 of 2).
+```
+
+*Criterion 3 (real output, run 1).* `model_calls` for all 15 triggered runs:
+
+```
+0fd59a06  timeout  model_calls=2
+ea081a03  timeout  model_calls=2
+d76d7110  timeout  model_calls=2
+b06397cb  timeout  model_calls=2
+7b8abd6a  timeout  model_calls=2
+434ffa2b  auth     model_calls=1
+dbe8c4f2  auth     model_calls=1
+b2ef241b  auth     model_calls=1
+cd545304  auth     model_calls=1
+bef6022a  auth     model_calls=1
+7eddd77b  network  model_calls=2
+2bae097b  network  model_calls=2
+6693350c  network  model_calls=2
+80cf2078  network  model_calls=2
+7041d2d7  network  model_calls=2
+```
+
+*Criterion 4 (real output, run 1, the one that missed).* All 5 network-down log lines. `2bae097b` (13.813 s) and `6693350c` (11.06 s) are over the 10 s target:
+
+```json
+{"run_id": "7eddd77b", "timestamp": "2026-11-12T00:07:53+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.769, "generation_s": 8.733, "duration_s": 9.502, "timeout_s": 30.0}
+{"run_id": "2bae097b", "timestamp": "2026-11-12T00:08:09+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 2.124, "generation_s": 11.69, "duration_s": 13.813, "timeout_s": 30.0}
+{"run_id": "6693350c", "timestamp": "2026-11-12T00:08:29+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.966, "generation_s": 10.094, "duration_s": 11.06, "timeout_s": 30.0}
+{"run_id": "80cf2078", "timestamp": "2026-11-12T00:08:45+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.721, "generation_s": 8.652, "duration_s": 9.373, "timeout_s": 30.0}
+{"run_id": "7041d2d7", "timestamp": "2026-11-12T00:08:59+00:00", "entrypoint": "cli", "question": "how does the housing lottery work?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "failed", "answer": "Couldn't reach the answer service. Check your internet connection and try again.", "failure_kind": "network", "failure_detail": "ConnectError: [WinError 10061] No connection could be made because the target machine actively refused it", "best_distance": 0.1454, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_housing_lottery.txt", "admin_parking_permits.txt", "advising_registration.txt", "housing_morrow_house.txt"], "model_calls": 2, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.655, "generation_s": 8.471, "duration_s": 9.126, "timeout_s": 30.0}
+```
+
+Network-down `duration_s` across all three trials: run 1: 9.502, 13.813, 11.06, 9.373, 9.126 · run 2: 9.34, 8.652, 8.063, 8.034, 8.234 · run 3: 11.652, 8.993, 8.04, 8.079, 7.954. Timeout and bad-key runs were all ≤ 9.353 s.
+
+
+*Criterion 5 (real output, run 1).* The first in-scope run (which includes loading the embedding model, hence 6 s) and an out-of-scope refusal:
+
+```json
+{"run_id": "a82b1aa0", "timestamp": "2026-11-12T00:09:12+00:00", "entrypoint": "cli", "question": "How many credit hours are required to graduate?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "ok", "answer": "120 credit hours are required to graduate, as stated in admin_graduation_requirements.txt.", "failure_kind": null, "failure_detail": null, "best_distance": 0.2886, "threshold": 0.6, "chunks_retrieved": 5, "sources": ["admin_graduation_requirements.txt", "admin_pass_fail_option.txt", "course_stat_150.txt", "course_stat_150_workload.txt", "money_jobs.txt"], "model_calls": 1, "cache_hit": false, "tokens_in": 577, "tokens_out": 21, "retrieval_s": 0.662, "generation_s": 3.481, "duration_s": 5.999, "timeout_s": 30.0}
+{"run_id": "015eae99", "timestamp": "2026-11-12T00:09:24+00:00", "entrypoint": "cli", "question": "What is the capital of Mongolia?", "corpus": "campus_life", "model": "gemini-3.5-flash-lite", "status": "refused", "answer": "I don't have enough information about that.", "failure_kind": null, "failure_detail": null, "best_distance": 0.8246, "threshold": 0.6, "chunks_retrieved": 5, "sources": [], "model_calls": 0, "cache_hit": false, "tokens_in": 0, "tokens_out": 0, "retrieval_s": 0.127, "generation_s": null, "duration_s": 0.127, "timeout_s": 30.0}
+```
+
+In-scope `duration_s` for run 1: 5.999, 0.833, 0.724, 0.618, 0.521, 0.809, 0.716, 0.682, 0.541, 0.72 → average 1.216 s.

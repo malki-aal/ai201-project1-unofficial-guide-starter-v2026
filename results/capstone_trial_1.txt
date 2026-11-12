@@ -1,0 +1,38 @@
+Trial 1 — started 2026-11-11 18:05:55
+  timeout  #1  exit=0 status=failed kind=timeout calls=2 6.376s  run_id=0fd59a06
+  timeout  #2  exit=0 status=failed kind=timeout calls=2 4.862s  run_id=ea081a03
+  timeout  #3  exit=0 status=failed kind=timeout calls=2 5.005s  run_id=d76d7110
+  timeout  #4  exit=0 status=failed kind=timeout calls=2 4.608s  run_id=b06397cb
+  timeout  #5  exit=0 status=failed kind=timeout calls=2 4.508s  run_id=7b8abd6a
+  auth     #1  exit=0 status=failed kind=auth calls=1 3.484s  run_id=434ffa2b
+  auth     #2  exit=0 status=failed kind=auth calls=1 9.353s  run_id=dbe8c4f2
+  auth     #3  exit=0 status=failed kind=auth calls=1 3.102s  run_id=b2ef241b
+  auth     #4  exit=0 status=failed kind=auth calls=1 7.992s  run_id=cd545304
+  auth     #5  exit=0 status=failed kind=auth calls=1 5.718s  run_id=bef6022a
+  network  #1  exit=0 status=failed kind=network calls=2 9.502s  run_id=7eddd77b
+  network  #2  exit=0 status=failed kind=network calls=2 13.813s  run_id=2bae097b
+  network  #3  exit=0 status=failed kind=network calls=2 11.06s  run_id=6693350c
+  network  #4  exit=0 status=failed kind=network calls=2 9.373s  run_id=80cf2078
+  network  #5  exit=0 status=failed kind=network calls=2 9.126s  run_id=7041d2d7
+  normal path: 10 in-scope + 5 out-of-scope in one process ...
+  normal   a82b1aa0 ok       calls=1 5.999s  How many credit hours are required to graduate?
+  normal   a045e095 ok       calls=1 0.833s  What is the last semester to declare a major
+  normal   34d4c7de ok       calls=1 0.724s  How many mid-terms are there in math220 Linear Alg
+  normal   7df69f16 ok       calls=1 0.618s  Do students receive free campus wifi?
+  normal   9c652983 ok       calls=1 0.521s  Does east parking lots ever sell out?
+  normal   74418556 ok       calls=1 0.809s  How many credit hours are required to graduate?
+  normal   22033c6e ok       calls=1 0.716s  What is the last semester to declare a major
+  normal   6bee0784 ok       calls=1 0.682s  How many mid-terms are there in math220 Linear Alg
+  normal   b2929b74 ok       calls=1 0.541s  Do students receive free campus wifi?
+  normal   36511fba ok       calls=1 0.72s  Does east parking lots ever sell out?
+  normal   015eae99 refused  calls=0 0.127s  What is the capital of Mongolia?
+  normal   e5a2f7e5 refused  calls=0 0.083s  How do I change the oil in a diesel engine?
+  normal   9afd0816 refused  calls=0 0.063s  Who won the 1994 World Cup?
+  normal   e435a0e9 refused  calls=0 0.058s  What is the recommended dosage of ibuprofen for a 
+  normal   32ca2a3f refused  calls=0 0.068s  How do I write a for loop in Rust?
+  C1: MET   timeout 5/5 · auth 5/5 · network 5/5
+  C2: MET   0 crashes / 15
+  C3: MET   timeout 5/5 · auth 5/5 · network 5/5
+  C4: MISS  timeout 5/5 (max 6.376s) · auth 5/5 (max 9.353s) · network 3/5 (max 13.813s)
+  C5: MET   10/10 ok, avg 1.216s, 5/5 refused
+  saved results\capstone_trial_1.json
